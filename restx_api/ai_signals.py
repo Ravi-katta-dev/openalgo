@@ -128,7 +128,7 @@ _execute_request_model = api.model(
 # Helper
 # ---------------------------------------------------------------------------
 
-def _authenticate(api_key: str) -> tuple[bool, str | None]:
+def _validate_api_key(api_key: str) -> tuple[bool, str | None]:
     """Verify API key and return (ok, broker)."""
     if not api_key:
         return False, None
@@ -161,7 +161,7 @@ class AISignals(Resource):
             data = request.json or {}
             api_key = data.get("apikey")
 
-            ok, _broker = _authenticate(api_key)
+            ok, _broker = _validate_api_key(api_key)
             if not ok:
                 return make_response(
                     jsonify({"status": "error", "message": "Invalid API key"}), 403
@@ -232,7 +232,7 @@ class AIExecute(Resource):
             data = request.json or {}
             api_key = data.get("apikey")
 
-            ok, broker = _authenticate(api_key)
+            ok, broker = _validate_api_key(api_key)
             if not ok:
                 return make_response(
                     jsonify({"status": "error", "message": "Invalid API key"}), 403
