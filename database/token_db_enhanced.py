@@ -678,7 +678,7 @@ class BrokerSymbolCache:
             try:
                 _rust_symcache.clear_symbols()
             except Exception:
-                pass
+                logger.debug("Rust symcache clear failed (non-fatal)", exc_info=True)
         logger.debug("Cache cleared")
 
     def get_cache_info(self) -> dict:
