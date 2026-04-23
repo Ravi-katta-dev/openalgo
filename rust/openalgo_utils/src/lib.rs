@@ -64,17 +64,17 @@ fn py_format_indian_currency(value: f64) -> String {
 /// EQ/FUT MPP slabs: (max_price_exclusive, protection_pct)
 /// Last entry uses f64::INFINITY as the sentinel for "all remaining prices".
 const EQ_FUT_SLABS: &[(f64, f64)] = &[
-    (100.0, 2.0),       // price < 100     → 2.0%
-    (500.0, 1.0),       // 100 ≤ price < 500 → 1.0%
-    (f64::MAX, 0.5),    // price ≥ 500     → 0.5%
+    (100.0, 2.0),          // price < 100       → 2.0%
+    (500.0, 1.0),          // 100 ≤ price < 500 → 1.0%
+    (f64::INFINITY, 0.5),  // price ≥ 500       → 0.5%
 ];
 
 /// Options (CE/PE) MPP slabs
 const OPT_SLABS: &[(f64, f64)] = &[
-    (10.0, 5.0),        // price < 10      → 5.0%
-    (100.0, 3.0),       // 10 ≤ price < 100 → 3.0%
-    (500.0, 2.0),       // 100 ≤ price < 500 → 2.0%
-    (f64::MAX, 1.0),    // price ≥ 500     → 1.0%
+    (10.0, 5.0),           // price < 10        → 5.0%
+    (100.0, 3.0),          // 10 ≤ price < 100  → 3.0%
+    (500.0, 2.0),          // 100 ≤ price < 500 → 2.0%
+    (f64::INFINITY, 1.0),  // price ≥ 500       → 1.0%
 ];
 
 fn is_option(instrument_type: &str) -> bool {
@@ -93,7 +93,8 @@ fn mpp_percentage(price: f64, instrument_type: &str) -> f64 {
             return pct;
         }
     }
-    // Fallback (should not reach here given f64::MAX sentinel)
+    // Fallback (unreachable in practice: the last slab uses f64::INFINITY so
+    // every finite price is handled above).
     slabs.last().map(|&(_, p)| p).unwrap_or(0.5)
 }
 

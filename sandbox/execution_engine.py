@@ -142,8 +142,9 @@ class ExecutionEngine:
             quote = quote_cache.get((order.symbol, order.exchange))
             if not quote:
                 continue
+            orderid_str = str(order.orderid)
             rust_orders.append({
-                "orderid": str(order.orderid),
+                "orderid": orderid_str,
                 "symbol": order.symbol,
                 "exchange": order.exchange,
                 "action": order.action,
@@ -152,7 +153,7 @@ class ExecutionEngine:
                 "trigger_price": float(order.trigger_price or 0),
                 "quantity": int(order.quantity or 0),
             })
-            order_map[str(order.orderid)] = order
+            order_map[orderid_str] = order
 
         rust_quotes = {}
         for (symbol, exchange), q in quote_cache.items():

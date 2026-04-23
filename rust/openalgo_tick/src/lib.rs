@@ -25,11 +25,6 @@ fn canonical_field(raw: &str) -> Option<&'static str> {
         | "last_traded_price" | "lastPrice" | "trade_price" => Some("ltp"),
 
         // OHLC
-        "open" | "open_price" | "openPrice" | "op" | "open_interest_day"
-            if raw != "open_interest_day" =>
-        {
-            Some("open")
-        }
         "open" | "open_price" | "openPrice" | "op" => Some("open"),
         "high" | "high_price" | "highPrice" | "hp" | "dayHigh" => Some("high"),
         "low" | "low_price" | "lowPrice" | "lp2" | "dayLow" => Some("low"),
