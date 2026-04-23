@@ -1,0 +1,12 @@
+[package]
+name = "openalgo_greeks"
+version = "0.1.0"
+edition = "2021"
+description = "Rust-powered Black-76 option Greeks engine for OpenAlgo"
+
+[lib]
+name = "openalgo_greeks"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { workspace = true }
