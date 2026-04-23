@@ -3,8 +3,9 @@ Option Greeks Service
 Calculates option Greeks (Delta, Gamma, Theta, Vega, Rho) and Implied Volatility
 for options across all supported exchanges (NFO, BFO, CDS, MCX)
 
-Uses Black-76 model (py_vollib) - appropriate for options on futures/forwards
-which is the correct model for Indian F&O markets (NFO, BFO, MCX, CDS)
+Uses Black-76 model — either the native Rust engine (openalgo_greeks, zero external
+dependencies) or py_vollib as fallback.  Both implement the same Black-76 formulae
+so results are numerically equivalent.
 """
 
 import re
@@ -14,8 +15,18 @@ from typing import Any, Dict, Optional, Tuple
 from utils.constants import CRYPTO_EXCHANGES
 from utils.logging import get_logger
 
-# py_vollib is lazy-loaded inside calculate_greeks() and check_pyvollib_availability()
-# to avoid loading scipy/numba/llvmlite at startup
+# Try the Rust-native Black-76 engine first.  It has zero external dependencies
+# (no scipy/numba/llvmlite) and is significantly faster for batch calculations.
+# py_vollib is used as fallback when the Rust extension is not installed.
+try:
+    import openalgo_greeks as _rust_greeks
+
+    _RUST_GREEKS_AVAILABLE = True
+except ImportError:
+    _RUST_GREEKS_AVAILABLE = False
+
+# py_vollib is lazy-loaded inside calculate_greeks() / check_pyvollib_availability()
+# to avoid loading scipy/numba/llvmlite at startup when not needed.
 
 logger = get_logger(__name__)
 
@@ -65,18 +76,28 @@ DEFAULT_INTEREST_RATES = {
 
 
 def check_pyvollib_availability():
-    """Check if py_vollib library is available"""
+    """Check if a Black-76 pricing engine is available (Rust or py_vollib)."""
+    if _RUST_GREEKS_AVAILABLE:
+        return True, None, None
     try:
         from py_vollib.black.implied_volatility import implied_volatility as black_iv  # noqa: F401
 
         return True, None, None
     except ImportError:
-        logger.error("py_vollib library not installed. Install with: pip install py_vollib")
+        logger.error(
+            "No Black-76 engine available. "
+            "Install the Rust extension with: cd rust/openalgo_greeks && maturin develop --release "
+            "or install py_vollib: pip install py_vollib"
+        )
         return (
             False,
             {
                 "status": "error",
-                "message": "Option Greeks calculation requires py_vollib library. Install with: pip install py_vollib",
+                "message": (
+                    "Option Greeks calculation requires either the openalgo_greeks Rust extension "
+                    "or the py_vollib library. "
+                    "Build the Rust extension: cd rust/openalgo_greeks && maturin develop --release"
+                ),
             },
             500,
         )
@@ -260,7 +281,11 @@ def calculate_greeks(
     api_key: str = None,
 ) -> tuple[bool, dict[str, Any], int]:
     """
-    Calculate Option Greeks using Black-76 model (py_vollib)
+    Calculate Option Greeks using Black-76 model.
+
+    Uses the Rust-native openalgo_greeks engine when available (no external
+    dependencies), falling back to py_vollib otherwise.  Both engines implement
+    the same Black-76 formulae so results are numerically equivalent.
 
     Black-76 is the appropriate model for options on futures/forwards,
     which includes Indian F&O markets (NFO, BFO, MCX, CDS).
@@ -278,24 +303,38 @@ def calculate_greeks(
         Tuple of (success, response_dict, status_code)
     """
     try:
-        # Check if py_vollib is available and import (lazy-loaded to avoid startup overhead)
-        try:
-            from py_vollib.black.greeks.analytical import delta as black_delta
-            from py_vollib.black.greeks.analytical import gamma as black_gamma
-            from py_vollib.black.greeks.analytical import rho as black_rho
-            from py_vollib.black.greeks.analytical import theta as black_theta
-            from py_vollib.black.greeks.analytical import vega as black_vega
-            from py_vollib.black.implied_volatility import implied_volatility as black_iv
-        except ImportError:
-            logger.error("py_vollib library not installed.")
-            return (
-                False,
-                {
-                    "status": "error",
-                    "message": "Option Greeks calculation requires py_vollib library. Install with: pip install py_vollib",
-                },
-                500,
-            )
+        # Resolve the Black-76 pricing functions.  Prefer the Rust engine
+        # (openalgo_greeks) which has no external dependencies; fall back to
+        # py_vollib when the Rust extension is not installed.
+        if _RUST_GREEKS_AVAILABLE:
+            black_iv = _rust_greeks.implied_volatility
+            black_delta = _rust_greeks.black76_delta
+            black_gamma = _rust_greeks.black76_gamma
+            black_theta = _rust_greeks.black76_theta
+            black_vega = _rust_greeks.black76_vega
+            black_rho = _rust_greeks.black76_rho
+        else:
+            try:
+                from py_vollib.black.greeks.analytical import delta as black_delta
+                from py_vollib.black.greeks.analytical import gamma as black_gamma
+                from py_vollib.black.greeks.analytical import rho as black_rho
+                from py_vollib.black.greeks.analytical import theta as black_theta
+                from py_vollib.black.greeks.analytical import vega as black_vega
+                from py_vollib.black.implied_volatility import implied_volatility as black_iv
+            except ImportError:
+                logger.error("No Black-76 engine available (openalgo_greeks not installed and py_vollib missing).")
+                return (
+                    False,
+                    {
+                        "status": "error",
+                        "message": (
+                            "Option Greeks calculation requires either the openalgo_greeks Rust extension "
+                            "or py_vollib. Build the Rust extension: "
+                            "cd rust/openalgo_greeks && maturin develop --release"
+                        ),
+                    },
+                    500,
+                )
 
         # Parse option symbol with custom expiry time if provided
         base_symbol, expiry, strike, opt_type = parse_option_symbol(

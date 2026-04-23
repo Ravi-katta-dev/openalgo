@@ -115,6 +115,23 @@ def init_security_middleware(app: Flask) -> None:
 
     logger.debug("Security middleware initialized")
 
+    # Pre-load the Rust IP-ban cache from the database so that the first
+    # request is not slowed down by a cold cache miss.  This is best-effort:
+    # if the extension is not installed or the DB is not yet initialised the
+    # log line is the only side-effect.
+    try:
+        import openalgo_security as _rust_sec
+        from database.traffic_db import IPBan, logs_session
+
+        try:
+            active_bans = IPBan.query.all()
+            _rust_sec.load_banned_ips([b.ip_address for b in active_bans])
+            logger.debug(f"Rust IP-ban cache pre-loaded with {len(active_bans)} entries")
+        finally:
+            logs_session.remove()
+    except Exception:
+        pass  # Extension not installed or DB not ready — silently skip
+
     # Note: 404 handler is now in app.py to avoid conflicts
     # The main app's 404 handler calls Error404Tracker.track_404()
 

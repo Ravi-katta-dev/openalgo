@@ -15,6 +15,53 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Rust extension build & smoke-test
+  rust-extensions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Cache Rust build artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            rust/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('rust/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install maturin
+        run: pip install maturin
+      - name: cargo check (fast syntax check)
+        working-directory: rust
+        run: cargo check
+      - name: Build all extension wheels
+        run: bash scripts/build_rust_extensions.sh
+      - name: Smoke-test imports
+        run: |
+          python - <<'EOF'
+          import openalgo_greeks, openalgo_security, openalgo_matcher
+          import openalgo_tick, openalgo_symcache, openalgo_utils
+          # Basic functional checks
+          openalgo_security.load_banned_ips(["1.2.3.4"])
+          assert openalgo_security.is_banned("1.2.3.4")
+          assert not openalgo_security.is_banned("9.9.9.9")
+          assert openalgo_utils.format_indian_number(10_000_000.0) == "1.00Cr"
+          print("All Rust extension smoke tests passed")
+          EOF
+      - name: Upload wheels
+        uses: actions/upload-artifact@v6
+        with:
+          name: rust-wheels-${{ runner.os }}
+          path: rust/target/wheels/*.whl
+          retention-days: 7
+
   # Backend linting with Ruff
   backend-lint:
     runs-on: ubuntu-latest
@@ -195,7 +242,7 @@ jobs:
   # assembles them into a single Docker Hub manifest list under the
   # canonical tags (:latest, :<sha>).
   docker-build:
-    needs: [backend-lint, backend-test, frontend-build, security-scan]
+    needs: [backend-lint, backend-test, frontend-build, security-scan, rust-extensions]
     # Skip for fork PRs (secrets not available)
     if: github.event.pull_request.head.repo.full_name == github.repository || github.event_name == 'push'
     strategy:
