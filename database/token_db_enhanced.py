@@ -17,6 +17,21 @@ from utils.logging import get_logger
 
 logger = get_logger(__name__)
 
+# ---------------------------------------------------------------------------
+# Optional Rust-accelerated symbol cache (openalgo_symcache)
+# ---------------------------------------------------------------------------
+# When installed, openalgo_symcache maintains a Rust HashMap of
+# (symbol, exchange) → token/brsymbol/brexchange entries.  This acts as a
+# secondary fast-path when the Python BrokerSymbolCache is cold (e.g., the
+# first few requests after startup before load_cache_for_broker() completes)
+# and avoids the SQLite round-trip for the most common lookups.
+try:
+    import openalgo_symcache as _rust_symcache
+
+    _RUST_SYMCACHE_AVAILABLE = True
+except ImportError:
+    _RUST_SYMCACHE_AVAILABLE = False
+
 # Regex pattern to extract underlying from OpenAlgo symbol format
 # Format: [BaseSymbol][DDMMMYY][StrikePrice][CE/PE] or [BaseSymbol][DDMMMYY]FUT
 # Examples: NIFTY28MAR2420800CE, BANKNIFTY24APR24FUT, CRUDEOIL17APR246750CE
@@ -259,6 +274,31 @@ class BrokerSymbolCache:
 
             # Set session timing
             self._set_session_timing()
+
+            # Mirror symbol data into the Rust cache for secondary fast-path lookups.
+            if _RUST_SYMCACHE_AVAILABLE:
+                try:
+                    rust_rows = [
+                        {
+                            "symbol": sd.symbol,
+                            "brsymbol": sd.brsymbol,
+                            "exchange": sd.exchange,
+                            "brexchange": sd.brexchange,
+                            "token": sd.token,
+                            "expiry": sd.expiry or "",
+                            "strike": sd.strike or 0.0,
+                            "lotsize": sd.lotsize or 1,
+                            "instrumenttype": sd.instrumenttype or "",
+                            "tick_size": sd.tick_size or 0.05,
+                        }
+                        for sd in self.by_symbol_exchange.values()
+                    ]
+                    _rust_symcache.load_symbols(rust_rows)
+                    logger.debug(
+                        f"Rust symcache populated with {_rust_symcache.symbol_count()} symbols"
+                    )
+                except Exception:
+                    logger.debug("Rust symcache population failed (non-fatal)", exc_info=True)
 
             return True
 
@@ -633,6 +673,12 @@ class BrokerSymbolCache:
         self.expiries_by_exchange_underlying.clear()
         self.cache_loaded = False
         self.active_broker = None
+        # Also clear the Rust symcache so stale entries don't survive
+        if _RUST_SYMCACHE_AVAILABLE:
+            try:
+                _rust_symcache.clear_symbols()
+            except Exception:
+                pass
         logger.debug("Cache cleared")
 
     def get_cache_info(self) -> dict:
@@ -759,6 +805,10 @@ def get_symbol_info(symbol: str, exchange: str) -> SymbolData | None:
 # Database fallback functions (imported from original token_db)
 def get_token_dbquery(symbol: str, exchange: str) -> str | None:
     """Query database for token by symbol and exchange"""
+    if _RUST_SYMCACHE_AVAILABLE:
+        result = _rust_symcache.lookup_token(symbol, exchange)
+        if result is not None:
+            return result
     try:
         from database.symbol import SymToken
 
@@ -789,6 +839,10 @@ def get_symbol_dbquery(token: str, exchange: str) -> str | None:
 
 def get_br_symbol_dbquery(symbol: str, exchange: str) -> str | None:
     """Query database for broker symbol"""
+    if _RUST_SYMCACHE_AVAILABLE:
+        entry = _rust_symcache.lookup_symbol(symbol, exchange)
+        if entry is not None:
+            return entry.get("brsymbol")
     try:
         from database.symbol import SymToken
 
@@ -819,6 +873,10 @@ def get_oa_symbol_dbquery(brsymbol: str, exchange: str) -> str | None:
 
 def get_brexchange_dbquery(symbol: str, exchange: str) -> str | None:
     """Query database for broker exchange"""
+    if _RUST_SYMCACHE_AVAILABLE:
+        result = _rust_symcache.lookup_brexchange(symbol, exchange)
+        if result is not None:
+            return result
     try:
         from database.symbol import SymToken
 

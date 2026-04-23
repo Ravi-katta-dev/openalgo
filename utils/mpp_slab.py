@@ -11,6 +11,15 @@ from utils.logging import get_logger
 
 logger = get_logger(__name__)
 
+# Try the Rust-native MPP engine first.  It is significantly faster for high-frequency
+# order routing where protected prices must be computed for every MARKET order.
+try:
+    import openalgo_utils as _rust_utils
+
+    _RUST_UTILS_AVAILABLE = True
+except ImportError:
+    _RUST_UTILS_AVAILABLE = False
+
 # MPP Slabs for Equity and Futures (EQ and FUT)
 # Based on Indian exchange regulations
 # Format: (max_price, protection_percentage)
@@ -43,6 +52,9 @@ def get_instrument_type_from_symbol(symbol: str) -> str:
     Returns:
         str: 'CE', 'PE', 'FUT', or 'EQ'
     """
+    if _RUST_UTILS_AVAILABLE:
+        return _rust_utils.get_instrument_type_from_symbol(symbol)
+
     symbol_upper = symbol.upper()
     if symbol_upper.endswith("CE"):
         return "CE"
@@ -86,6 +98,9 @@ def get_mpp_percentage(price: float, instrument_type: str = "EQ") -> float:
         >>> get_mpp_percentage(50, 'CE')   # Returns 3.0 (for OPT price 10-100)
         >>> get_mpp_percentage(5, 'PE')    # Returns 5.0 (for OPT price < 10)
     """
+    if _RUST_UTILS_AVAILABLE:
+        return _rust_utils.get_mpp_percentage(price, instrument_type)
+
     slabs = get_mpp_slabs(instrument_type)
     slab_type = "OPT" if instrument_type in OPTIONS_INSTRUMENT_TYPES else "EQ/FUT"
 
@@ -116,6 +131,9 @@ def round_to_tick_size(price: float, tick_size: float = None) -> float:
         >>> round_to_tick_size(102.0111, 0.01)  # Returns 102.01
         >>> round_to_tick_size(102.0111, None)  # Returns 102.01 (2 decimal places)
     """
+    if _RUST_UTILS_AVAILABLE:
+        return _rust_utils.round_to_tick_size(price, tick_size)
+
     if tick_size is None or tick_size <= 0:
         # No tick size available, just round to 2 decimal places
         return round(price, 2)
