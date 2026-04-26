@@ -30,15 +30,7 @@ else
         
         # Use Railway's PORT, default to 5000 for local development
         APP_PORT="${PORT:-5000}"
-
-        # CSP keyword values contain single quotes (e.g. 'self', 'none').
-        # These cannot be expressed via ${var:-'value'} inside a heredoc
-        # because bash strips the single quotes during default-value expansion.
-        # Pre-define them here so $var expansion in the heredoc preserves them.
-        _CSP_SELF="'self'"
-        _CSP_NONE="'none'"
-        _CSP_UNSAFE_INLINE="'unsafe-inline'"
-
+        
         cat > "$ENV_FILE" << EOF
 # OpenAlgo Environment Configuration File
 # Auto-generated from environment variables
@@ -126,18 +118,18 @@ CORS_MAX_AGE = '${CORS_MAX_AGE:-86400}'
 # CSP Configuration
 CSP_ENABLED = '${CSP_ENABLED:-TRUE}'
 CSP_REPORT_ONLY = '${CSP_REPORT_ONLY:-FALSE}'
-CSP_DEFAULT_SRC = "${CSP_DEFAULT_SRC:-$_CSP_SELF}"
-CSP_SCRIPT_SRC = "${CSP_SCRIPT_SRC:-$_CSP_SELF $_CSP_UNSAFE_INLINE https://cdn.socket.io https://static.cloudflareinsights.com}"
-CSP_STYLE_SRC = "${CSP_STYLE_SRC:-$_CSP_SELF $_CSP_UNSAFE_INLINE}"
-CSP_IMG_SRC = "${CSP_IMG_SRC:-$_CSP_SELF data:}"
-CSP_CONNECT_SRC = "${CSP_CONNECT_SRC:-$_CSP_SELF wss://${HOST_DOMAIN} wss: ws: https://cdn.socket.io}"
-CSP_FONT_SRC = "${CSP_FONT_SRC:-$_CSP_SELF}"
-CSP_OBJECT_SRC = "${CSP_OBJECT_SRC:-$_CSP_NONE}"
-CSP_MEDIA_SRC = "${CSP_MEDIA_SRC:-$_CSP_SELF data: https://*.amazonaws.com https://*.cloudfront.net}"
-CSP_FRAME_SRC = "${CSP_FRAME_SRC:-$_CSP_SELF}"
-CSP_FORM_ACTION = "${CSP_FORM_ACTION:-$_CSP_SELF}"
-CSP_FRAME_ANCESTORS = "${CSP_FRAME_ANCESTORS:-$_CSP_SELF}"
-CSP_BASE_URI = "${CSP_BASE_URI:-$_CSP_SELF}"
+CSP_DEFAULT_SRC = '${CSP_DEFAULT_SRC:-"'"'"'self'"'"'"}'
+CSP_SCRIPT_SRC = '${CSP_SCRIPT_SRC:-"'"'"'self'"'"' '"'"'unsafe-inline'"'"' https://cdn.socket.io https://static.cloudflareinsights.com"}'
+CSP_STYLE_SRC = '${CSP_STYLE_SRC:-"'"'"'self'"'"' '"'"'unsafe-inline'"'"'"}'
+CSP_IMG_SRC = '${CSP_IMG_SRC:-"'"'"'self'"'"' data:"}'
+CSP_CONNECT_SRC = '${CSP_CONNECT_SRC:-"'"'"'self'"'"' wss://${HOST_DOMAIN} wss: ws: https://cdn.socket.io"}'
+CSP_FONT_SRC = '${CSP_FONT_SRC:-"'"'"'self'"'"'"}'
+CSP_OBJECT_SRC = '${CSP_OBJECT_SRC:-"'"'"'none'"'"'"}'
+CSP_MEDIA_SRC = '${CSP_MEDIA_SRC:-"'"'"'self'"'"' data: https://*.amazonaws.com https://*.cloudfront.net"}'
+CSP_FRAME_SRC = '${CSP_FRAME_SRC:-"'"'"'self'"'"'"}'
+CSP_FORM_ACTION = '${CSP_FORM_ACTION:-"'"'"'self'"'"'"}'
+CSP_FRAME_ANCESTORS = '${CSP_FRAME_ANCESTORS:-"'"'"'self'"'"'"}'
+CSP_BASE_URI = '${CSP_BASE_URI:-"'"'"'self'"'"'"}'
 CSP_UPGRADE_INSECURE_REQUESTS = '${CSP_UPGRADE_INSECURE_REQUESTS:-TRUE}'
 CSP_REPORT_URI = '${CSP_REPORT_URI:-}'
 
