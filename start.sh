@@ -211,7 +211,7 @@ cd /app
 # migrations, then shut it down before gunicorn takes the port.
 APP_PORT="${PORT:-5000}"
 /app/.venv/bin/python -c "
-import http.server, os, sys
+import http.server, socket, os
 
 class _H(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
@@ -221,10 +221,19 @@ class _H(http.server.BaseHTTPRequestHandler):
         self.wfile.write(b'OpenAlgo is starting - running database migrations')
     def log_message(self, *_): pass
 
-srv = http.server.HTTPServer(('0.0.0.0', int(os.environ.get('PORT', 5000))), _H)
+class _Server(http.server.HTTPServer):
+    allow_reuse_address = True
+    def server_bind(self):
+        # SO_REUSEPORT lets gunicorn bind the same port while this stub is
+        # still running, eliminating the connection-refused gap on handover.
+        self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+        super().server_bind()
+
+srv = _Server(('0.0.0.0', int(os.environ.get('PORT', 5000))), _H)
 srv.serve_forever()
 " &
 HEALTH_STUB_PID=$!
+export HEALTH_STUB_PID
 echo "[OpenAlgo] Health-check stub started on port ${APP_PORT} (PID: ${HEALTH_STUB_PID})"
 
 # ============================================
@@ -238,10 +247,9 @@ else
     echo "[OpenAlgo] No migrations found, skipping..."
 fi
 
-# Stop health-check stub and free the port for gunicorn
-echo "[OpenAlgo] Stopping health-check stub..."
-kill "${HEALTH_STUB_PID}" 2>/dev/null
-wait "${HEALTH_STUB_PID}" 2>/dev/null || true
+# NOTE: The health-check stub is now stopped by gunicorn's when_ready hook
+# (gunicorn.conf.py) once gunicorn is ready to accept connections.  This
+# eliminates the connection-refused gap that caused 502 errors on Render.
 
 # ============================================
 # WEBSOCKET PROXY SERVER
@@ -256,7 +264,10 @@ echo "[OpenAlgo] WebSocket proxy server started with PID $WEBSOCKET_PID"
 # ============================================
 cleanup() {
     echo "[OpenAlgo] Shutting down..."
-    if [ ! -z "$WEBSOCKET_PID" ]; then
+    if [ -n "$HEALTH_STUB_PID" ]; then
+        kill $HEALTH_STUB_PID 2>/dev/null || true
+    fi
+    if [ -n "$WEBSOCKET_PID" ]; then
         kill $WEBSOCKET_PID 2>/dev/null
     fi
     exit 0
@@ -284,5 +295,7 @@ exec /app/.venv/bin/gunicorn \
     --graceful-timeout 30 \
     --worker-tmp-dir /tmp/gunicorn_workers \
     --no-control-socket \
+    --reuse-port \
+    -c /app/gunicorn.conf.py \
     --log-level warning \
     app:app
