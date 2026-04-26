@@ -77,8 +77,19 @@ def add_feed_token_column():
         # Connect to the database
         conn = engine.connect()
 
-        # Check if the feed_token column already exists
+        # On a fresh installation the auth table does not exist yet; the ORM
+        # creates it when the app first starts (after migrations run).
+        # Skip gracefully — the column is already present in the model definition.
         inspector = inspect(engine)
+        if "auth" not in inspector.get_table_names():
+            logger.info(
+                "auth table not found (fresh install); "
+                "skipping feed_token migration — the ORM will create it with the column"
+            )
+            conn.close()
+            return True
+
+        # Check if the feed_token column already exists
         columns = [col["name"] for col in inspector.get_columns("auth")]
 
         if "feed_token" not in columns:
