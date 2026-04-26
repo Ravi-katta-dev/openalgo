@@ -73,6 +73,17 @@ def check_table_exists(engine, table_name):
 def add_order_mode_column(engine):
     """Add order_mode column to api_keys table"""
     try:
+        # On a fresh installation the api_keys table is created by the ORM
+        # (database/auth_db.py:init_db) when the app first starts — after
+        # migrations run.  Skip gracefully so the migration does not fail;
+        # the column is already present in the model definition.
+        if not check_table_exists(engine, "api_keys"):
+            logger.info(
+                "ℹ api_keys table not found (fresh install); "
+                "skipping column migration — the ORM will create it with the column"
+            )
+            return True
+
         # Check if column already exists
         if check_column_exists(engine, "api_keys", "order_mode"):
             logger.info("✓ order_mode column already exists in api_keys table")
@@ -158,6 +169,12 @@ def create_pending_orders_table(engine):
 def set_default_mode(engine):
     """Set default order_mode to 'auto' for all existing users"""
     try:
+        if not check_table_exists(engine, "api_keys"):
+            logger.info(
+                "ℹ api_keys table not found; skipping default mode update (fresh install)"
+            )
+            return True
+
         logger.info("Setting default order_mode to 'auto' for existing users...")
 
         with engine.connect() as conn:
@@ -185,10 +202,18 @@ def verify_migration(engine):
     try:
         logger.info("Verifying migration...")
 
-        # Check order_mode column
-        if not check_column_exists(engine, "api_keys", "order_mode"):
-            logger.error("✗ order_mode column not found in api_keys table")
-            return False
+        # On a fresh install the api_keys table does not yet exist; the ORM
+        # creates it (with order_mode already present) on first app startup.
+        # In that case we only need the pending_orders table to be present.
+        api_keys_exists = check_table_exists(engine, "api_keys")
+
+        if api_keys_exists:
+            # Check order_mode column
+            if not check_column_exists(engine, "api_keys", "order_mode"):
+                logger.error("✗ order_mode column not found in api_keys table")
+                return False
+        else:
+            logger.info("ℹ api_keys table absent (fresh install); skipping column check")
 
         # Check pending_orders table
         if not check_table_exists(engine, "pending_orders"):
