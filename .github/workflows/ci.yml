@@ -15,6 +15,95 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Rust extension build & smoke-test
+  rust-extensions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Cache Rust build artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            rust/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('rust/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install maturin
+        run: pip install maturin
+      - name: cargo check (fast syntax check)
+        working-directory: rust
+        run: cargo check
+      - name: Build all extension wheels
+        run: bash scripts/build_rust_extensions.sh
+      - name: Smoke-test imports
+        run: |
+          python - <<'EOF'
+          import openalgo_greeks, openalgo_security, openalgo_matcher
+          import openalgo_tick, openalgo_symcache, openalgo_utils
+
+          # openalgo_security
+          openalgo_security.load_banned_ips(["1.2.3.4"])
+          assert openalgo_security.is_banned("1.2.3.4")
+          assert not openalgo_security.is_banned("9.9.9.9")
+
+          # openalgo_utils
+          assert openalgo_utils.format_indian_number(10_000_000.0) == "1.00Cr"
+          assert openalgo_utils.format_indian_number(500_000.0) == "5.00L"
+          assert openalgo_utils.get_mpp_percentage(50.0, "EQ") == 2.0
+          assert openalgo_utils.get_mpp_percentage(50.0, "CE") == 3.0
+          assert openalgo_utils.round_to_tick_size(102.03, 0.05) == 102.05
+          assert openalgo_utils.get_instrument_type_from_symbol("NIFTY28MAR2420800CE") == "CE"
+          assert openalgo_utils.get_instrument_type_from_symbol("NIFTY28MAR24FUT") == "FUT"
+          assert openalgo_utils.get_instrument_type_from_symbol("RELIANCE") == "EQ"
+
+          # openalgo_tick
+          import json
+          raw = json.dumps({"last_price": 1234.5, "vol": 1000, "open_interest": 500})
+          tick = openalgo_tick.parse_json(raw)
+          assert isinstance(tick, dict)
+          canonical = openalgo_tick.normalize_tick(raw, "zerodha")
+          assert canonical.get("ltp") == 1234.5, f"Expected 1234.5, got {canonical.get('ltp')}"
+          assert canonical.get("volume") == 1000
+          assert canonical.get("oi") == 500
+
+          # openalgo_symcache
+          openalgo_symcache.load_symbols([
+              {"symbol": "RELIANCE", "brsymbol": "2885", "exchange": "NSE",
+               "brexchange": "NSE", "token": "2885", "expiry": "",
+               "strike": 0.0, "lotsize": 1, "instrumenttype": "EQ", "tick_size": 0.05}
+          ])
+          assert openalgo_symcache.symbol_count() == 1
+          assert openalgo_symcache.lookup_token("RELIANCE", "NSE") == "2885"
+          assert openalgo_symcache.lookup_brexchange("RELIANCE", "NSE") == "NSE"
+          assert openalgo_symcache.lookup_symbol("RELIANCE", "NSE")["brsymbol"] == "2885"
+          assert openalgo_symcache.lookup_token("UNKNOWN", "NSE") is None
+          openalgo_symcache.clear_symbols()
+          assert openalgo_symcache.symbol_count() == 0
+
+          # openalgo_greeks (basic IV calculation)
+          iv = openalgo_greeks.implied_volatility(
+              option_type="c", S=18000.0, K=18000.0, t=0.04,
+              r=0.065, market_price=200.0, q=0.0
+          )
+          assert iv is not None and iv > 0, f"Unexpected IV: {iv}"
+
+          print("All Rust extension smoke tests passed")
+          EOF
+      - name: Upload wheels
+        uses: actions/upload-artifact@v6
+        with:
+          name: rust-wheels-${{ runner.os }}
+          path: rust/target/wheels/*.whl
+          retention-days: 7
+
   # Backend linting with Ruff
   backend-lint:
     runs-on: ubuntu-latest
@@ -195,7 +284,7 @@ jobs:
   # assembles them into a single Docker Hub manifest list under the
   # canonical tags (:latest, :<sha>).
   docker-build:
-    needs: [backend-lint, backend-test, frontend-build, security-scan]
+    needs: [backend-lint, backend-test, frontend-build, security-scan, rust-extensions]
     # Skip for fork PRs (secrets not available)
     if: github.event.pull_request.head.repo.full_name == github.repository || github.event_name == 'push'
     strategy:

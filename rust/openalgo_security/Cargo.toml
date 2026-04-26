@@ -1,0 +1,12 @@
+[package]
+name = "openalgo_security"
+version = "0.1.0"
+edition = "2021"
+description = "High-performance IP ban set for OpenAlgo"
+
+[lib]
+name = "openalgo_security"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { workspace = true }

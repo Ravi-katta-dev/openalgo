@@ -32,6 +32,19 @@ from utils.logging import get_logger
 
 logger = get_logger(__name__)
 
+# ---------------------------------------------------------------------------
+# Optional Rust-accelerated order matcher
+# ---------------------------------------------------------------------------
+# When installed, openalgo_matcher evaluates which orders match in parallel
+# (Rayon, GIL-released) and returns the execution decision for each order.
+# The Python _process_order() path is used as fallback.
+try:
+    import openalgo_matcher as _rust_matcher
+
+    _RUST_MATCHER = True
+except ImportError:
+    _RUST_MATCHER = False
+
 
 class ExecutionEngine:
     """Executes pending orders based on market data"""
@@ -86,23 +99,107 @@ class ExecutionEngine:
 
             # Process orders in batches (respecting order rate limit of 10/second)
             orders_processed = 0
-            for i in range(0, len(pending_orders), self.order_rate_limit):
-                batch = pending_orders[i : i + self.order_rate_limit]
 
-                for order in batch:
-                    quote = quote_cache.get((order.symbol, order.exchange))
-                    if quote:
-                        self._process_order(order, quote)
-                        orders_processed += 1
+            if _RUST_MATCHER:
+                # Use Rust parallel matching to pre-screen orders; execution
+                # (DB writes, margin updates) still happens sequentially in Python.
+                orders_processed = self._process_orders_with_rust_matcher(
+                    pending_orders, quote_cache
+                )
+            else:
+                for i in range(0, len(pending_orders), self.order_rate_limit):
+                    batch = pending_orders[i : i + self.order_rate_limit]
 
-                # Wait 1 second before next batch if more orders remain
-                if i + self.order_rate_limit < len(pending_orders):
-                    time.sleep(self.batch_delay)
+                    for order in batch:
+                        quote = quote_cache.get((order.symbol, order.exchange))
+                        if quote:
+                            self._process_order(order, quote)
+                            orders_processed += 1
+
+                    # Wait 1 second before next batch if more orders remain
+                    if i + self.order_rate_limit < len(pending_orders):
+                        time.sleep(self.batch_delay)
 
             logger.info(f"Processed {orders_processed} orders")
 
         except Exception as e:
             logger.exception(f"Error in execution engine: {e}")
+
+    def _process_orders_with_rust_matcher(self, pending_orders, quote_cache):
+        """Use openalgo_matcher to evaluate order conditions in parallel, then
+        execute only the orders that matched.
+
+        The Rust layer is pure computation (no DB access) and releases the GIL
+        to evaluate all orders in parallel using Rayon.  All DB writes and margin
+        accounting still happen here in Python, sequentially.
+
+        Returns the number of orders processed.
+        """
+        # Build the orders list and quotes dict expected by openalgo_matcher
+        rust_orders = []
+        order_map = {}  # orderid → SandboxOrder ORM object
+        for order in pending_orders:
+            quote = quote_cache.get((order.symbol, order.exchange))
+            if not quote:
+                continue
+            orderid_str = str(order.orderid)
+            rust_orders.append({
+                "orderid": orderid_str,
+                "symbol": order.symbol,
+                "exchange": order.exchange,
+                "action": order.action,
+                "price_type": order.price_type,
+                "price": float(order.price or 0),
+                "trigger_price": float(order.trigger_price or 0),
+                "quantity": int(order.quantity or 0),
+            })
+            order_map[orderid_str] = order
+
+        rust_quotes = {}
+        for (symbol, exchange), q in quote_cache.items():
+            if q:
+                rust_quotes[f"{symbol}:{exchange}"] = {
+                    "ltp": float(q.get("ltp", 0)),
+                    "bid": float(q.get("bid", 0)),
+                    "ask": float(q.get("ask", 0)),
+                }
+
+        if not rust_orders:
+            return 0
+
+        try:
+            match_results = _rust_matcher.match_orders(rust_orders, rust_quotes)
+        except Exception as e:
+            logger.exception(f"Rust matcher failed, falling back to Python: {e}")
+            orders_processed = 0
+            for order in pending_orders:
+                quote = quote_cache.get((order.symbol, order.exchange))
+                if quote:
+                    self._process_order(order, quote)
+                    orders_processed += 1
+            return orders_processed
+
+        orders_processed = 0
+        for result in match_results:
+            if not result.get("should_execute"):
+                continue
+            orderid = result["orderid"]
+            order = order_map.get(orderid)
+            if not order:
+                continue
+            execution_price = result.get("execution_price", 0)
+            if execution_price <= 0:
+                continue
+            # Delegate the actual execution (DB writes, margin, position
+            # updates) to the existing _execute_order path.
+            try:
+                self._execute_order(order, Decimal(str(execution_price)))
+                orders_processed += 1
+            except Exception as e:
+                logger.exception(f"Error executing matched order {orderid}: {e}")
+
+        return orders_processed
+
 
     def _fetch_quote(self, symbol, exchange):
         """

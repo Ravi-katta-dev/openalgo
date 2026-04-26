@@ -24,6 +24,20 @@ from database.settings_db import get_security_settings
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# Optional Rust-accelerated IP ban cache
+# ---------------------------------------------------------------------------
+# When installed, openalgo_security maintains a Rust HashSet of banned IPs.
+# is_ip_banned() uses it for a fast O(1) pre-check: if the Rust cache says
+# "not banned" the SQLite query is skipped entirely.  When it says "banned"
+# the SQLite query is still done to handle temporary-ban expiry correctly.
+try:
+    import openalgo_security as _rust_sec
+
+    _RUST_SEC = True
+except ImportError:
+    _RUST_SEC = False
+
 # Use a separate database for logs
 LOGS_DATABASE_URL = os.getenv("LOGS_DATABASE_URL", "sqlite:///db/logs.db")
 
@@ -151,6 +165,13 @@ class IPBan(LogBase):
     def is_ip_banned(ip_address):
         """Check if an IP is currently banned"""
         try:
+            # Fast-path: if the Rust cache is available and the IP is NOT in
+            # the ban set, we can skip the SQLite query entirely.  If the Rust
+            # cache reports the IP as banned we still verify via SQLite so that
+            # expired temporary bans are cleaned up correctly.
+            if _RUST_SEC and not _rust_sec.is_banned(ip_address):
+                return False
+
             ban = IPBan.query.filter_by(ip_address=ip_address).first()
             if not ban:
                 return False
@@ -167,6 +188,8 @@ class IPBan(LogBase):
                     # Ban expired, remove it
                     logs_session.delete(ban)
                     logs_session.commit()
+                    if _RUST_SEC:
+                        _rust_sec.unban_ip(ip_address)
                     return False
 
             return False
@@ -223,6 +246,8 @@ class IPBan(LogBase):
 
             logs_session.commit()
             logger.info(f"IP {ip_address} banned: {reason}")
+            if _RUST_SEC:
+                _rust_sec.ban_ip(ip_address)
             return True
         except Exception as e:
             logger.exception(f"Error banning IP {ip_address}: {e}")
@@ -237,6 +262,8 @@ class IPBan(LogBase):
             if ban:
                 logs_session.delete(ban)
                 logs_session.commit()
+                if _RUST_SEC:
+                    _rust_sec.unban_ip(ip_address)
                 logger.info(f"IP {ip_address} unbanned")
                 return True
             return False
@@ -260,7 +287,13 @@ class IPBan(LogBase):
             logs_session.commit()
 
             # Return active bans
-            return IPBan.query.all()
+            active_bans = IPBan.query.all()
+
+            # Keep the Rust cache in sync with the current active ban list
+            if _RUST_SEC:
+                _rust_sec.load_banned_ips([b.ip_address for b in active_bans])
+
+            return active_bans
         except Exception as e:
             logger.exception(f"Error getting IP bans: {e}")
             return []

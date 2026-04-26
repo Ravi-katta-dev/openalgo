@@ -1,0 +1,12 @@
+[package]
+name = "openalgo_symcache"
+version = "0.1.0"
+edition = "2021"
+description = "In-memory symbol token cache for OpenAlgo"
+
+[lib]
+name = "openalgo_symcache"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { workspace = true }
