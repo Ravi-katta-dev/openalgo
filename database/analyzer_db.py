@@ -26,6 +26,7 @@ Base = declarative_base()
 Base.query = db_session.query_property()
 
 
+class AnalyzerLog(Base):
     __tablename__ = "analyzer_logs"
     id = Column(Integer, primary_key=True)
     api_type = Column(String(50), nullable=False)  # placeorder, cancelorder, etc.
