@@ -25,6 +25,7 @@ from sqlalchemy.orm import scoped_session, sessionmaker
 from sqlalchemy.pool import NullPool
 from sqlalchemy.sql import func
 
+from database.engine_factory import make_engine
 from utils.logging import get_logger
 
 # Initialize logger
@@ -124,18 +125,7 @@ verified_api_key_cache = TTLCache(maxsize=1024, ttl=36000)  # 10 hours
 # Define a cache for invalid API keys with shorter 5-minute TTL (prevent cache poisoning)
 invalid_api_key_cache = TTLCache(maxsize=512, ttl=300)  # 5 minutes
 
-# Conditionally create engine based on DB type
-if DATABASE_URL and "sqlite" in DATABASE_URL:
-    # SQLite: Use NullPool — each checkout creates a fresh connection.
-    # Session cleanup is handled by app.py teardown_appcontext.
-    # StaticPool must NOT be used: concurrent requests on a single shared
-    # SQLite connection cause "bad parameter or other API misuse" errors.
-    engine = create_engine(
-        DATABASE_URL, poolclass=NullPool, connect_args={"check_same_thread": False}
-    )
-else:
-    # For other databases like PostgreSQL, use connection pooling
-    engine = create_engine(DATABASE_URL, pool_size=50, max_overflow=100, pool_timeout=10)
+engine = make_engine(DATABASE_URL)
 
 db_session = scoped_session(sessionmaker(autocommit=False, autoflush=False, bind=engine))
 Base = declarative_base()

@@ -8,6 +8,8 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import NullPool
 
+from database.engine_factory import make_engine
+
 logger = logging.getLogger(__name__)
 
 # If a download stays in 'downloading' state longer than this, treat it as stuck/failed
@@ -16,22 +18,14 @@ DOWNLOAD_TIMEOUT_MINUTES = 5
 # Get the database path from environment variable or use default
 DB_PATH = os.getenv("DATABASE_URL", "sqlite:///db/openalgo.db")
 
-# Ensure the directory exists
-os.makedirs(os.path.dirname(DB_PATH.replace("sqlite:///", "")), exist_ok=True)
+# Ensure the directory exists (SQLite only — PostgreSQL URLs are not filesystem paths)
+if "sqlite" in DB_PATH:
+    _db_dir = os.path.dirname(DB_PATH.replace("sqlite:///", ""))
+    if _db_dir:
+        os.makedirs(_db_dir, exist_ok=True)
 
 # Create the engine and session
-# Conditionally create engine based on DB type
-if DB_PATH and "sqlite" in DB_PATH:
-    # SQLite: Use NullPool to prevent connection pool exhaustion
-    engine = create_engine(
-        DB_PATH,
-        echo=False,
-        poolclass=NullPool,
-        connect_args={"check_same_thread": False, "timeout": 30},
-    )
-else:
-    # For other databases like PostgreSQL, use connection pooling
-    engine = create_engine(DB_PATH, echo=False, pool_size=50, max_overflow=100, pool_timeout=10)
+engine = make_engine(DB_PATH)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()

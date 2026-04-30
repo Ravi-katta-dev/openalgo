@@ -10,6 +10,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import scoped_session, sessionmaker
 from sqlalchemy.pool import NullPool
 
+from database.engine_factory import make_engine
 from utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -18,12 +19,7 @@ _leverage_cache = TTLCache(maxsize=1, ttl=3600)
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-if DATABASE_URL and "sqlite" in DATABASE_URL:
-    engine = create_engine(
-        DATABASE_URL, poolclass=NullPool, connect_args={"check_same_thread": False}
-    )
-else:
-    engine = create_engine(DATABASE_URL, pool_size=50, max_overflow=100, pool_timeout=10)
+engine = make_engine(DATABASE_URL)
 
 db_session = scoped_session(sessionmaker(autocommit=False, autoflush=False, bind=engine))
 Base = declarative_base()
