@@ -24,22 +24,14 @@ from sqlalchemy.orm import scoped_session, sessionmaker
 from sqlalchemy.pool import NullPool
 from sqlalchemy.sql import func
 
+from database.engine_factory import make_engine
+
 logger = logging.getLogger(__name__)
 
 # Use a separate database for health monitoring
 HEALTH_DATABASE_URL = os.getenv("HEALTH_DATABASE_URL", "sqlite:///db/health.db")
 
-# Conditionally create engine based on DB type
-if HEALTH_DATABASE_URL and "sqlite" in HEALTH_DATABASE_URL:
-    # SQLite: Use NullPool to prevent connection pool exhaustion
-    health_engine = create_engine(
-        HEALTH_DATABASE_URL, poolclass=NullPool, connect_args={"check_same_thread": False}
-    )
-else:
-    # For other databases like PostgreSQL, use connection pooling
-    health_engine = create_engine(
-        HEALTH_DATABASE_URL, pool_size=50, max_overflow=100, pool_timeout=10
-    )
+health_engine = make_engine(HEALTH_DATABASE_URL, pool_scale=0.4)
 
 health_session = scoped_session(
     sessionmaker(autocommit=False, autoflush=False, bind=health_engine)
@@ -438,11 +430,12 @@ class HealthAlert(HealthBase):
 
 def init_health_db():
     """Initialize the health monitoring database"""
-    # Extract directory from database URL and create if it doesn't exist
-    db_path = HEALTH_DATABASE_URL.replace("sqlite:///", "")
-    db_dir = os.path.dirname(db_path)
-    if db_dir:
-        os.makedirs(db_dir, exist_ok=True)
+    # Extract directory from database URL and create if it doesn't exist (SQLite only)
+    if "sqlite" in HEALTH_DATABASE_URL:
+        db_path = HEALTH_DATABASE_URL.replace("sqlite:///", "")
+        db_dir = os.path.dirname(db_path)
+        if db_dir:
+            os.makedirs(db_dir, exist_ok=True)
 
     from database.db_init_helper import init_db_with_logging
 

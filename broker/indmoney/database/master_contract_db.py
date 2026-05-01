@@ -14,6 +14,7 @@ import requests
 from sqlalchemy import Column, Float, Index, Integer, Sequence, String, create_engine, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import scoped_session, sessionmaker
+from database.engine_factory import make_engine
 
 from database.auth_db import get_auth_token
 from extensions import socketio  # Import SocketIO
@@ -23,26 +24,7 @@ logger = get_logger(__name__)
 
 DATABASE_URL = os.getenv("DATABASE_URL")  # Replace with your database path
 
-# Create engine with optimized settings for SQLite concurrency
-engine = create_engine(
-    DATABASE_URL,
-    pool_size=20,
-    max_overflow=50,
-    pool_timeout=30,
-    pool_recycle=3600,
-    connect_args={"timeout": 30, "check_same_thread": False},
-)
-
-# Enable WAL mode for better concurrent access
-try:
-    with engine.connect() as conn:
-        conn.execute(text("PRAGMA journal_mode=WAL"))
-        conn.execute(text("PRAGMA synchronous=NORMAL"))
-        conn.execute(text("PRAGMA temp_store=memory"))
-        conn.execute(text("PRAGMA mmap_size=268435456"))  # 256MB
-        conn.commit()
-except Exception as e:
-    logger.warning(f"Could not set SQLite pragmas for master_contract_db: {e}")
+engine = make_engine(DATABASE_URL)
 
 db_session = scoped_session(sessionmaker(autocommit=False, autoflush=False, bind=engine))
 Base = declarative_base()

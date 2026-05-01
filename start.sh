@@ -239,12 +239,22 @@ echo "[OpenAlgo] Health-check stub started on port ${APP_PORT} (PID: ${HEALTH_ST
 # ============================================
 # DATABASE MIGRATIONS
 # ============================================
-# Run migrations automatically on startup (idempotent - safe to run multiple times)
+# Run legacy upgrade scripts first (column additions, index changes, etc.)
 if [ -f "/app/upgrade/migrate_all.py" ]; then
-    echo "[OpenAlgo] Running database migrations..."
-    /app/.venv/bin/python /app/upgrade/migrate_all.py || echo "[OpenAlgo] Migration completed (some may have been skipped)"
+    echo "[OpenAlgo] Running legacy database upgrade scripts..."
+    /app/.venv/bin/python /app/upgrade/migrate_all.py || echo "[OpenAlgo] Legacy migration completed (some may have been skipped)"
 else
-    echo "[OpenAlgo] No migrations found, skipping..."
+    echo "[OpenAlgo] No legacy migrations found, skipping..."
+fi
+
+# Run Alembic schema migrations (idempotent — safe to run multiple times).
+# On SQLite this is a no-op if all tables already exist via create_all().
+# On PostgreSQL this is the authoritative way to apply schema changes.
+if [ -f "/app/alembic.ini" ]; then
+    echo "[OpenAlgo] Running Alembic schema migrations..."
+    /app/.venv/bin/python -m alembic upgrade head \
+        && echo "[OpenAlgo] Alembic migrations applied successfully." \
+        || echo "[OpenAlgo] Alembic migration skipped or failed (app will still start)."
 fi
 
 # NOTE: The health-check stub is now stopped by gunicorn's when_ready hook

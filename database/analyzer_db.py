@@ -12,22 +12,15 @@ from sqlalchemy.orm import scoped_session, sessionmaker
 from sqlalchemy.pool import NullPool
 from sqlalchemy.sql import func
 
+from database.engine_factory import make_engine
+
 from utils.logging import get_logger
 
 logger = get_logger(__name__)
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-# Conditionally create engine based on DB type
-if DATABASE_URL and "sqlite" in DATABASE_URL:
-    # SQLite: Use NullPool to prevent connection pool exhaustion
-    engine = create_engine(
-        DATABASE_URL, poolclass=NullPool, connect_args={"check_same_thread": False}
-    )
-else:
-    # For other databases like PostgreSQL, use connection pooling
-    engine = create_engine(DATABASE_URL, pool_size=50, max_overflow=100, pool_timeout=10)
-
+engine = make_engine(DATABASE_URL)
 db_session = scoped_session(sessionmaker(autocommit=False, autoflush=False, bind=engine))
 Base = declarative_base()
 Base.query = db_session.query_property()

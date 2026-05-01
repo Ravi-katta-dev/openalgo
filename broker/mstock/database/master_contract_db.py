@@ -8,6 +8,7 @@ import requests
 from sqlalchemy import Column, Float, Index, Integer, Sequence, String, create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import scoped_session, sessionmaker
+from database.engine_factory import make_engine
 
 from database.auth_db import get_auth_token
 from extensions import socketio
@@ -19,7 +20,7 @@ logger = get_logger(__name__)
 # DATABASE SETUP
 # -------------------------------------------------------------------
 DATABASE_URL = os.getenv("DATABASE_URL")
-engine = create_engine(DATABASE_URL)
+engine = make_engine(DATABASE_URL)
 db_session = scoped_session(sessionmaker(autocommit=False, autoflush=False, bind=engine))
 Base = declarative_base()
 Base.query = db_session.query_property()

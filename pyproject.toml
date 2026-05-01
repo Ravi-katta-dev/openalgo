@@ -151,6 +151,8 @@ dependencies = [
   "WTForms==3.2.1",
   "zipp==3.23.1",
   "zmq==0.0.0",
+  "alembic>=1.18.4",
+  "pg8000>=1.31.5",
 ]
 
 [build-system]
