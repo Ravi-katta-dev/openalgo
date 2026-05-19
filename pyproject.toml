@@ -51,7 +51,7 @@ dependencies = [
   "httpx[http2]==0.28.1",
   "httpx-sse==0.4.3",
   "hyperframe==6.1.0",
-  "idna==3.11",
+  "idna==3.15",
   "importlib-resources==6.5.2",
   "iniconfig==2.3.0",
   "ipykernel==6.29.5",
