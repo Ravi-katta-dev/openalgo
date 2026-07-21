@@ -89,7 +89,7 @@ dependencies = [
   "fastparquet==2025.12.0",
   "parso==0.8.6",
   "pexpect==4.9.0",
-  "pillow>=12.2.0",
+  "pillow>=12.3.0",
   "platformdirs==4.9.6",
   "plotly==6.6.0",
   "pluggy==1.6.0",
