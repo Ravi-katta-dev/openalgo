@@ -124,7 +124,7 @@ dependencies = [
   "rich==13.7.1",
   "rpds-py==0.30.0",
   "scipy==1.17.1",
-  "setuptools==80.10.1",
+  "setuptools==83.0.0",
   "simple-websocket==1.1.0",
   "simplejson==3.20.2",
   "six==1.17.0",
@@ -156,7 +156,7 @@ dependencies = [
 ]
 
 [build-system]
-requires = ["setuptools>=69", "wheel"]
+requires = ["setuptools>=83.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 # Ruff - Fast Python linter and formatter
