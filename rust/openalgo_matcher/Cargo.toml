@@ -1,0 +1,13 @@
+[package]
+name = "openalgo_matcher"
+version = "0.1.0"
+edition = "2021"
+description = "Parallel sandbox order matching engine for OpenAlgo"
+
+[lib]
+name = "openalgo_matcher"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { workspace = true }
+rayon = "1"

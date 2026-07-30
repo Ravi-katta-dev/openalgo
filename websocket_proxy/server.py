@@ -25,6 +25,16 @@ from .port_check import find_available_port, is_port_in_use
 # Initialize logger
 logger = get_logger("websocket_proxy")
 
+# Optional Rust-accelerated JSON tick parser.  When installed, serde_json
+# parses ZeroMQ market-data strings significantly faster than Python's
+# built-in json module — important for high-frequency data flows.
+try:
+    from openalgo_tick import parse_json as _rust_parse_json
+
+    _RUST_TICK_AVAILABLE = True
+except ImportError:
+    _RUST_TICK_AVAILABLE = False
+
 
 class WebSocketProxy:
     """
@@ -1496,7 +1506,7 @@ class WebSocketProxy:
                     logger.debug(f"Skipping private event topic: {topic_str}")
                     continue
 
-                market_data = json.loads(data_str)
+                market_data = _rust_parse_json(data_str) if _RUST_TICK_AVAILABLE else json.loads(data_str)
 
                 # Extract topic components from ZMQ topic string.
                 # All adapters publish: EXCHANGE_SYMBOL_MODE

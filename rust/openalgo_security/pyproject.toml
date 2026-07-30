@@ -1,0 +1,12 @@
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "openalgo-security"
+requires-python = ">=3.12"
+version = "0.1.0"
+description = "High-performance IP ban HashSet for OpenAlgo"
+
+[tool.maturin]
+features = ["pyo3/extension-module"]

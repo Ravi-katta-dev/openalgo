@@ -1,0 +1,12 @@
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "openalgo-greeks"
+requires-python = ">=3.12"
+version = "0.1.0"
+description = "Rust-powered Black-76 option Greeks engine (IV + Delta/Gamma/Theta/Vega/Rho)"
+
+[tool.maturin]
+features = ["pyo3/extension-module"]

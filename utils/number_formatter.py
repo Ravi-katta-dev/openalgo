@@ -4,6 +4,16 @@ Number formatting utilities for Indian numbering system
 Formats large numbers in Crores (Cr) and Lakhs (L)
 """
 
+# Try the Rust-native formatter first.  It is significantly faster for
+# high-frequency dashboard rendering, especially when many P&L values
+# need to be formatted per request.
+try:
+    import openalgo_utils as _rust_utils
+
+    _RUST_UTILS_AVAILABLE = True
+except ImportError:
+    _RUST_UTILS_AVAILABLE = False
+
 
 def format_indian_number(value):
     """
@@ -22,31 +32,28 @@ def format_indian_number(value):
         Formatted string with Cr/L suffix or decimal format
     """
     try:
-        # Convert to float
         num = float(value)
-
-        # Handle sign
-        is_negative = num < 0
-        num = abs(num)
-
-        # Format based on magnitude
-        if num >= 10000000:  # 1 Crore or more
-            formatted = f"{num / 10000000:.2f}Cr"
-        elif num >= 100000:  # 1 Lakh or more
-            formatted = f"{num / 100000:.2f}L"
-        else:
-            # For numbers less than 1L, show with 2 decimal places
-            formatted = f"{num:.2f}"
-
-        # Add negative sign if needed
-        if is_negative:
-            formatted = f"-{formatted}"
-
-        return formatted
-
     except (ValueError, TypeError):
-        # If conversion fails, return original value as string
         return str(value)
+
+    if _RUST_UTILS_AVAILABLE:
+        return _rust_utils.format_indian_number(num)
+
+    # Python fallback
+    is_negative = num < 0
+    num = abs(num)
+
+    if num >= 10000000:  # 1 Crore or more
+        formatted = f"{num / 10000000:.2f}Cr"
+    elif num >= 100000:  # 1 Lakh or more
+        formatted = f"{num / 100000:.2f}L"
+    else:
+        formatted = f"{num:.2f}"
+
+    if is_negative:
+        formatted = f"-{formatted}"
+
+    return formatted
 
 
 def format_indian_currency(value):

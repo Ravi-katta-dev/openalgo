@@ -1,0 +1,12 @@
+[package]
+name = "openalgo_utils"
+version = "0.1.0"
+edition = "2021"
+description = "Rust-accelerated utilities (Indian number formatter, MPP slab) for OpenAlgo"
+
+[lib]
+name = "openalgo_utils"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { workspace = true }
